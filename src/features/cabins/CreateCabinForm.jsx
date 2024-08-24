@@ -1,23 +1,28 @@
-import styled from 'styled-components';
+import { useForm } from 'react-hook-form';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 
 import Input from '../../ui/Input';
 import Form from '../../ui/Form';
 import Button from '../../ui/Button';
 import FileInput from '../../ui/FileInput';
 import Textarea from '../../ui/Textarea';
-import { useForm } from 'react-hook-form';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { createCabin } from '../../services/apiCabins';
-import toast from 'react-hot-toast';
 import FormRow from '../../ui/FormRow';
 
-function CreateCabinForm() {
-  const { register, handleSubmit, reset, getValues, formState } = useForm();
+import { createEditCabin } from '../../services/apiCabins';
+
+function CreateCabinForm({ cabinToEdit = {} }) {
+  const { id: editId, ...editValues } = cabinToEdit;
+  const isEditSession = Boolean(editId);
+
+  const { register, handleSubmit, reset, getValues, formState } = useForm({
+    defaultValues: isEditSession ? editValues : {},
+  });
   const { errors } = formState;
 
   const queryClient = useQueryClient();
-  const { isLoading, mutate } = useMutation({
-    mutationFn: createCabin,
+  const { isLoading, mutate: createCabin } = useMutation({
+    mutationFn: createEditCabin,
     onSuccess: () => {
       toast.success('New Cabin successfully created');
       queryClient.invalidateQueries({
@@ -27,10 +32,30 @@ function CreateCabinForm() {
     },
     onError: err => toast.error(err.message),
   });
+  const { isLoading: isEditing, mutate: editCabin } = useMutation({
+    mutationFn: ({ newCabinData, id }) => createEditCabin(newCabinData, id),
+    onSuccess: () => {
+      toast.success('Cabin successfully edited');
+      queryClient.invalidateQueries({
+        queryKey: ['cabins'],
+      });
+      reset();
+    },
+    onError: err => toast.error(err.message),
+  });
 
   function onSubmit(data) {
-    mutate({ ...data, image: data.image[0] });
+    const image = typeof data.image === 'string' ? data.image : data.image[0];
+
+    if (isEditSession)
+      editCabin({
+        newCabinData: { ...data, image },
+        id: editId,
+      });
+    else createCabin({ ...data, image });
   }
+
+  const isWorking = isLoading || isEditing;
 
   return (
     <Form onSubmit={handleSubmit(onSubmit)}>
@@ -54,7 +79,7 @@ function CreateCabinForm() {
               message: 'Capacity should be at least 1',
             },
           })}
-          disabled={isLoading}
+          disabled={isWorking}
         />
       </FormRow>
 
@@ -69,7 +94,7 @@ function CreateCabinForm() {
               message: 'Capacity should be at least 1',
             },
           })}
-          disabled={isLoading}
+          disabled={isWorking}
         />
       </FormRow>
 
@@ -84,7 +109,7 @@ function CreateCabinForm() {
               getValues().regularPrice >= value ||
               'Discount should be less than regular price',
           })}
-          disabled={isLoading}
+          disabled={isWorking}
         />
       </FormRow>
 
@@ -96,18 +121,18 @@ function CreateCabinForm() {
           {...register('description', {
             required: 'This field is required',
           })}
-          disabled={isLoading}
+          disabled={isWorking}
         />
       </FormRow>
 
       <FormRow label='Cabin photo'>
         <FileInput
           {...register('image', {
-            required: 'This field is required',
+            required: isEditSession ? false : 'This field is required',
           })}
           id='image'
           accept='image/*'
-          disabled={isLoading}
+          disabled={isWorking}
         />
       </FormRow>
 
@@ -116,7 +141,9 @@ function CreateCabinForm() {
         <Button variation='secondary' type='reset'>
           Cancel
         </Button>
-        <Button disabled={isLoading}>Edit cabin</Button>
+        <Button disabled={isWorking}>
+          {isEditSession ? 'Edit Cabin' : 'Create new Cabin'}
+        </Button>
       </FormRow>
     </Form>
   );
